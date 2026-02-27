@@ -951,8 +951,8 @@ async function initApp() {
     await refreshAll();
     document.getElementById('page-loader').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    setConnStatus('ok', USE_MOCK ? 'Demo Mode' : 'Google Sheets ✓');
-    renderDashboard();
+    setConnStatus('ok', USE_MOCK ? '🎭 Demo Mode' : '🟢 Google Sheets');
+    renderDashboard(); // render dashboard เป็น default
   } catch(e) {
     document.getElementById('page-loader').style.display = 'none';
     document.getElementById('setup-screen').style.display = 'flex';
@@ -963,6 +963,15 @@ async function initApp() {
 }
 
 async function refreshAll() {
+  if (USE_MOCK) {
+    // Mock mode: ดึงตรงจาก MOCK object เสมอ (ไม่ต้องเรียก api)
+    cache.transactions = [...MOCK.transactions].sort((a,b) => new Date(b.date)-new Date(a.date));
+    cache.accounts = [...MOCK.accounts];
+    cache.budgets = [...MOCK.budgets];
+    cache.savings = [...MOCK.savings];
+    updateCatFilter();
+    return;
+  }
   const [txRes, accRes, budRes, savRes] = await Promise.all([
     api('getTransactions', {}),
     api('getAccounts'),
@@ -979,7 +988,7 @@ async function refreshAll() {
 // ╔══════════════════════════════════════════════════════╗
 // ║   NAVIGATION                                          ║
 // ╚══════════════════════════════════════════════════════╝
-function goPage(name, el) {
+function goPage(name, el, fromNav = false) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
   document.getElementById('pg-' + name)?.classList.add('active');
@@ -989,7 +998,7 @@ function goPage(name, el) {
   const titles = { dashboard:'Dashboard', transactions:'รายการทั้งหมด', split:'หารบิล', budget:'งบประมาณ', savings:'ออมเงิน', accounts:'บัญชี' };
   document.getElementById('page-heading').textContent = titles[name] || name;
   document.getElementById('page-sub').textContent = currentMonthFull();
-  closeSidebar();
+  if (fromNav) closeSidebar(); // ปิด sidebar เฉพาะตอนคลิก nav
 
   if (name === 'dashboard') renderDashboard();
   else if (name === 'transactions') renderTxPage();
@@ -1000,7 +1009,7 @@ function goPage(name, el) {
 }
 
 document.querySelectorAll('.nav-link').forEach(link => {
-  link.addEventListener('click', function() { goPage(this.dataset.page, this); });
+  link.addEventListener('click', function() { goPage(this.dataset.page, this, true); });
 });
 
 // ╔══════════════════════════════════════════════════════╗
@@ -1019,7 +1028,14 @@ function currentMonthStr() { return currentMonth.getFullYear() + '-' + String(cu
 function currentMonthFull() { return MONTHS_FULL[currentMonth.getMonth()] + ' ' + currentMonth.getFullYear(); }
 function renderActivePage() {
   const active = document.querySelector('.page.active')?.id.replace('pg-','');
-  if (active) goPage(active);
+  if (!active) return;
+  // เรียก render โดยตรง ไม่ผ่าน goPage เพื่อไม่ reset nav state
+  if (active === 'dashboard') renderDashboard();
+  else if (active === 'transactions') renderTxPage();
+  else if (active === 'split') renderSplit();
+  else if (active === 'budget') renderBudget();
+  else if (active === 'savings') renderSavings();
+  else if (active === 'accounts') renderAccounts();
 }
 function getMonthlyTx() { const m = currentMonthStr(); return cache.transactions.filter(t => t.date.startsWith(m)); }
 
@@ -1364,9 +1380,11 @@ async function saveTx() {
       await api('addTransaction', {}, 'POST', { name, amount, type: selTypeVal, category, date, account, note, user: currentUser, shared: sharedOn, paidBy: sharedOn ? paidBy : '' });
       toast('เพิ่มรายการแล้ว ✨', 'ok');
     }
-    await refreshAll();
     closeModal('mo-tx');
+    await refreshAll();
     renderActivePage();
+    // scroll to top of content
+    document.querySelector('.content')?.scrollTo(0, 0);
   } catch(e) {
     toast('เกิดข้อผิดพลาด: ' + e.message, 'err');
   } finally {
@@ -1380,8 +1398,8 @@ async function deleteTx() {
   try {
     await api('deleteTransaction', {}, 'POST', { id: editingId });
     toast('ลบแล้ว', 'ok');
-    await refreshAll();
     closeModal('mo-tx');
+    await refreshAll();
     renderActivePage();
   } catch(e) { toast('ลบไม่ได้: ' + e.message, 'err'); }
 }
